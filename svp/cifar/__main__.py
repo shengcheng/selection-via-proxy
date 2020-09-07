@@ -13,6 +13,8 @@ from svp.cifar.datasets import DATASETS
 from svp.cifar.train import train as train_function
 from svp.cifar.active import active as active_function
 from svp.cifar.coreset import coreset as coreset_function
+from svp.cifar.semisupervised import semisupervised as semi_supervised_function
+from svp.cifar.adv_active import adv_active as adv_active_function
 
 
 @click.group()
@@ -190,6 +192,66 @@ def active(run_dir: str,
            seed: int, checkpoint: str, track_test_acc: bool):
     active_function(**locals())
 
+@cli.command()
+@click.option('--run-dir', default='./run', show_default=True,
+              help='Path to log results and other artifacts.')
+@dataset_options
+@training_options
+@proxy_training_overrides
+# Active learning options
+@click.option('--initial-subset', type=int, default=1_000, show_default=True,
+              help='Number of randomly selected training examples to use for'
+                   ' initial labeled set.')
+@click.option('rounds', '--round', '-r', multiple=True, type=int,
+              default=(4_000, 5_000, 5_000, 5_000, 5_000), show_default=True,
+              help='Number of unlabeled examples to select in a round of'
+                   ' labeling.')
+@click.option('--selection-method', type=click.Choice(active_learning_methods),
+              default='least_confidence', show_default=True,
+              help='Criteria for selecting unlabeled examples to label')
+@click.option('--precomputed-selection',
+              help='Path to timestamped run_dir of precomputed indices')
+@click.option('--train-target/--no-train-target',
+              default=True, show_default=True,
+              help=('If proxy and target are different, train the target'
+                    ' after each round of selection'))
+@click.option('--eval-target-at', multiple=True, type=int,
+              help=('If proxy and target are different and --train-target,'
+                    ' limit the evaluation of the target model to specific'
+                    ' labeled subset sizes'))
+@computing_options
+@miscellaneous_options
+def adv_active(run_dir: str,
+
+           datasets_dir: str, dataset: str, augmentation: bool,
+           validation: int, shuffle: bool,
+
+           arch: str, optimizer: str,
+           epochs: Tuple[int, ...],
+           learning_rates: Tuple[float, ...],
+           momentum: float, weight_decay: float,
+           batch_size: int, eval_batch_size: int,
+
+           proxy_arch: str, proxy_optimizer: str,
+           proxy_epochs: Tuple[int, ...],
+           proxy_learning_rates: Tuple[float, ...],
+           proxy_momentum: float, proxy_weight_decay: float,
+           proxy_batch_size: int, proxy_eval_batch_size: int,
+
+           initial_subset: int,  rounds: Tuple[int, ...],
+           selection_method: str, precomputed_selection: Optional[str],
+           train_target: bool, eval_target_at: Tuple[int, ...],
+
+           num_step: int,
+           step_size: float,
+           epsilon: float,
+           beta: float,
+
+           cuda: bool, device_ids: Tuple[int, ...],
+           num_workers: int, eval_num_workers: int,
+
+           seed: int, checkpoint: str, track_test_acc: bool):
+    adv_active_function(**locals())
 
 @cli.command()
 @click.option('--run-dir', default='./run', show_default=True,
@@ -236,6 +298,63 @@ def coreset(run_dir: str,
 
             seed: int, checkpoint: str, track_test_acc: bool):
     coreset_function(**locals())
+
+
+@cli.command()
+@click.option('--run-dir', default='./run', show_default=True,
+              help='Path to log results and other artifacts.')
+@dataset_options
+@training_options
+@proxy_training_overrides
+# Semi-supervised
+@click.option('--initial-subset', type=int, default=1_000, show_default=True,
+              help='Number of randomly selected training examples to use for'
+                   ' initial labeled set.')
+@click.option('--selection-size', type=int,
+              default=4_000, show_default=True,
+              help='Number of unlabeled examples to select for selection')
+@click.option('--selection-method', type=click.Choice(active_learning_methods),
+              default='least_confidence', show_default=True,
+              help='Criteria for selecting unlabeled examples to label')
+@click.option('--precomputed-selection',
+              help='Path to timestamped run_dir of precomputed indices')
+@click.option('--train-target/--no-train-target',
+              default=True, show_default=True,
+              help=('If proxy and target are different, train the target'
+                    ' after each round of selection'))
+@click.option('--eval-target-at', multiple=True, type=int,
+              help=('If proxy and target are different and --train-target,'
+                    ' limit the evaluation of the target model to specific'
+                    ' labeled subset sizes'))
+@computing_options
+@miscellaneous_options
+def semisupervised(run_dir: str,
+
+           datasets_dir: str, dataset: str, augmentation: bool,
+           validation: int, shuffle: bool,
+
+           arch: str, optimizer: str,
+           epochs: Tuple[int, ...],
+           learning_rates: Tuple[float, ...],
+           momentum: float, weight_decay: float,
+           batch_size: int, eval_batch_size: int,
+
+           proxy_arch: str, proxy_optimizer: str,
+           proxy_epochs: Tuple[int, ...],
+           proxy_learning_rates: Tuple[float, ...],
+           proxy_momentum: float, proxy_weight_decay: float,
+           proxy_batch_size: int, proxy_eval_batch_size: int,
+
+           initial_subset: int,  selection_size: int,
+           selection_method: str, precomputed_selection: Optional[str],
+           train_target: bool, eval_target_at: Tuple[int, ...],
+
+           cuda: bool, device_ids: Tuple[int, ...],
+           num_workers: int, eval_num_workers: int,
+
+           seed: int, checkpoint: str, track_test_acc: bool):
+    semi_supervised_function(**locals())
+
 
 
 if __name__ == '__main__':

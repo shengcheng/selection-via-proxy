@@ -7,18 +7,18 @@ import numpy as np
 from torch import cuda
 
 from svp.common import utils
-from svp.common.train import create_loaders
+from svp.common.adv_train import create_loaders
 from svp.cifar.datasets import create_dataset
-from svp.cifar.train import create_model_and_optimizer
-from svp.common.selection import select
-from svp.common.active import (generate_models,
+from svp.cifar.adv_train import create_model_and_optimizer
+from svp.common.selection import select, adv_select
+from svp.common.adv_active import (generate_models,
                                check_different_models,
                                symlink_target_to_proxy,
                                symlink_to_precomputed_proxy,
                                validate_splits)
 
 
-def active(run_dir: str = './run',
+def adv_active(run_dir: str = './run',
 
            datasets_dir: str = './data', dataset: str = 'cifar10',
            augmentation: bool = True,
@@ -42,6 +42,11 @@ def active(run_dir: str = './run',
            precomputed_selection: Optional[str] = None,
            train_target: bool = True,
            eval_target_at: Optional[Tuple[int, ...]] = None,
+
+           num_step: int = 10,
+           step_size: float = 0.007,
+           epsilon: float = 0.031,
+           beta: float = 6.0,
 
            cuda: bool = True,
            device_ids: Tuple[int, ...] = tuple(range(cuda.device_count())),
@@ -222,6 +227,10 @@ def active(run_dir: str = './run',
             device, use_cuda,
             num_workers=num_workers,
             device_ids=device_ids,
+            num_step=num_step,
+            step_size=step_size,
+            epsilon=epsilon,
+            beta=beta,
             dev_loader=proxy_dev_loader,
             test_loader=proxy_test_loader,
             run_dir=proxy_run_dir,
@@ -326,7 +335,7 @@ def active(run_dir: str = './run',
 
         for selection_size in rounds:
             # Select additional data to label from the unlabeled pool
-            labeled, stats = select(model, train_dataset,
+            labeled, stats = adv_select(model, train_dataset,
                                     current=labeled,
                                     pool=unlabeled_pool,
                                     budget=selection_size,

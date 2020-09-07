@@ -2,23 +2,30 @@ import os
 from glob import glob
 from typing import Tuple, Optional
 from functools import partial
+from tqdm import tqdm
 
 import numpy as np
+import torch
 from torch import cuda
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.sampler import SubsetRandomSampler
+from svp.common.datasets import DatasetWithIndex
 
 from svp.common import utils
 from svp.common.train import create_loaders
 from svp.cifar.datasets import create_dataset
 from svp.cifar.train import create_model_and_optimizer
 from svp.common.selection import select
-from svp.common.active import (generate_models,
+from svp.common.semisupervised import (generate_models,
                                check_different_models,
                                symlink_target_to_proxy,
                                symlink_to_precomputed_proxy,
                                validate_splits)
 
 
-def active(run_dir: str = './run',
+def semisupervised(run_dir: str = './run',
 
            datasets_dir: str = './data', dataset: str = 'cifar10',
            augmentation: bool = True,
@@ -37,7 +44,7 @@ def active(run_dir: str = './run',
            proxy_batch_size: int = 128, proxy_eval_batch_size: int = 128,
 
            initial_subset: int = 1_000,
-           rounds: Tuple[int, ...] = (4_000, 5_000, 5_000, 5_000, 5_000),
+           selection_size: int = 4_000,
            selection_method: str = 'least_confidence',
            precomputed_selection: Optional[str] = None,
            train_target: bool = True,
@@ -168,7 +175,7 @@ def active(run_dir: str = './run',
                                    augmentation=augmentation)
     # Verify there is enough training data for validation,
     #   the initial subset, and the selection rounds.
-    validate_splits(train_dataset, validation, initial_subset, rounds)
+    validate_splits(train_dataset, validation, initial_subset, selection_size)
 
     # Create the test dataset.
     test_dataset = None
@@ -321,35 +328,74 @@ def active(run_dir: str = './run',
                          'initial_subset_{}.index'.format(len(labeled)))
 
         # Train the proxy on the initial random subset
-        model, stats = proxy_generator.send(labeled)
+        model, stats = proxy_generator.send([labeled, train_dataset])
         utils.save_result(stats, os.path.join(run_dir, "proxy.csv"))
 
-        for selection_size in rounds:
-            # Select additional data to label from the unlabeled pool
-            labeled, stats = select(model, train_dataset,
-                                    current=labeled,
-                                    pool=unlabeled_pool,
-                                    budget=selection_size,
-                                    method=selection_method,
-                                    batch_size=proxy_eval_batch_size,
-                                    device=device,
-                                    device_ids=device_ids,
-                                    num_workers=num_workers,
-                                    use_cuda=use_cuda)
-            utils.save_result(stats, os.path.join(run_dir, 'selection.csv'))
 
-            # Train the proxy on the newly added data.
-            model, stats = proxy_generator.send(labeled)
-            utils.save_result(stats, os.path.join(run_dir, 'proxy.csv'))
+        # Select additional data to label from the unlabeled pool
+        labeled, stats = select(model, train_dataset,
+                                current=labeled,
+                                pool=unlabeled_pool,
+                                budget=selection_size,
+                                method=selection_method,
+                                batch_size=proxy_eval_batch_size,
+                                device=device,
+                                device_ids=device_ids,
+                                num_workers=num_workers,
+                                use_cuda=use_cuda)
+        utils.save_result(stats, os.path.join(run_dir, 'selection.csv'))
 
-            # Check whether the target model should be trained. If you
-            #   have a specific labeling budget, you may not want to
-            #   evaluate the target after each selection round to save
-            #   time.
-            should_eval = (eval_target_at is None or
-                           len(eval_target_at) == 0 or
-                           len(labeled) in eval_target_at)
-            if train_target and should_eval and are_different_models:
-                # Train the target model on the selected data.
-                _, stats = target_generator.send(labeled)
-                utils.save_result(stats, os.path.join(run_dir, "target.csv"))
+        model, _ = proxy_generator.create_graph(run_dir)
+        model = model.to(device)
+        model = nn.DataParallel(model, device_ids=device_ids)
+
+        # with open(os.path.join(run_dir, 'proxy.csv'), mode='a') as out:
+        #     lines = out.readlines()
+        # for line in lines:
+                
+
+        # Give the samples with fake labels
+        fake_labeled = labeled[initial_subset:]
+        train_sampler = SubsetRandomSampler(fake_labeled)
+        train_loader = torch.utils.data.DataLoader(
+            DatasetWithIndex(train_dataset), sampler=train_sampler,
+            batch_size=batch_size, num_workers=num_workers, pin_memory=use_cuda, shuffle=False)
+        wrapper_train_loader = tqdm(train_loader)
+
+        model = model.to(device)
+        train_labels = train_dataset.train_labels
+        train_labels = np.array(train_labels)
+        true_label = train_labels
+        with torch.no_grad():
+            for batch_size, (indices, inputs, targets) in enumerate(wrapper_train_loader):
+                inputs = inputs.to(device)
+                output = model(inputs)
+                output = F.softmax(output, dim=1)
+                _, output = torch.max(output, dim=1)
+                ind = indices.data.cpu().numpy()
+                output = output.data.cpu().numpy()
+                train_labels[ind] = output
+
+        train_labels = list(train_labels.astype(np.int))
+        train_dataset.train_labels = train_labels
+        stats_pseudo = {'pseudo_label_acc': np.sum(train_labels != true_label) / selection_size,
+                        'selection size': selection_size,
+                        }
+        utils.save_result(stats_pseudo, os.path.join(run_dir, 'pseudo.csv'))
+
+
+        # Train the proxy on the newly added data.
+        model, stats = proxy_generator.send([labeled, train_dataset])
+        utils.save_result(stats, os.path.join(run_dir, 'proxy.csv'))
+
+        # Check whether the target model should be trained. If you
+        #   have a specific labeling budget, you may not want to
+        #   evaluate the target after each selection round to save
+        #   time.
+        should_eval = (eval_target_at is None or
+                       len(eval_target_at) == 0 or
+                       len(labeled) in eval_target_at)
+        if train_target and should_eval and are_different_models:
+            # Train the target model on the selected data.
+            _, stats = target_generator.send(labeled)
+            utils.save_result(stats, os.path.join(run_dir, "target.csv"))
