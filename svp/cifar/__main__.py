@@ -76,6 +76,19 @@ def training_options(func):
         func = decorator(func)
     return func
 
+def adv_options(func):
+    # Dataset options
+    decorators = [
+        click.option('--num_step', type=int, default=10, show_default=True),
+        click.option('--step_size', type=float, default=0.007, show_default=True),
+        click.option('--epsilon', type=float, default=0.003, show_default=True),
+        click.option('--beta', type=float, default=1.0, show_default=True)
+    ]
+    decorators.reverse()
+    for decorator in decorators:
+        func = decorator(func)
+    return func
+
 
 @cli.command()
 @click.option('--run-dir', default='./run', show_default=True,
@@ -219,9 +232,12 @@ def active(run_dir: str,
               help=('If proxy and target are different and --train-target,'
                     ' limit the evaluation of the target model to specific'
                     ' labeled subset sizes'))
+@click.option('--resume', default=False, type=bool)
+@click.option('--load_dir', type=str, default='')
 @computing_options
+@adv_options
 @miscellaneous_options
-def adv_active(run_dir: str,
+def advactive(run_dir: str,
 
            datasets_dir: str, dataset: str, augmentation: bool,
            validation: int, shuffle: bool,
@@ -246,6 +262,9 @@ def adv_active(run_dir: str,
            step_size: float,
            epsilon: float,
            beta: float,
+
+           resume: bool,
+           load_dir: str,
 
            cuda: bool, device_ids: Tuple[int, ...],
            num_workers: int, eval_num_workers: int,

@@ -14,7 +14,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 from svp.common import utils
 from svp.common.datasets import DatasetWithIndex
-from svp.common.trades import trades_loss
+from svp.common.trades import trades_loss, adv_samples
 
 Loaders = Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]
 
@@ -425,7 +425,7 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
             for batch_index, (indices, inputs, targets) in enumerate(wrapped_loader):  # noqa: E501
                 batch_size = targets.size(0)
                 assert batch_size < 2**32, 'Size is too large! correct will overflow'  # noqa: E501
-
+                inputs = inputs.to(device)
                 targets = targets.to(device)
                 outputs = model(inputs)
 
@@ -446,7 +446,7 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                                                                   perturb_steps=num_step,
                                                                   beta=beta
                                                                   )
-                    adv_outputs = model(adv_inputs)
+
                     if fp16:
                         with amp.scale_loss(loss, _optimizer) as scaled_loss:
                             scaled_loss.backward()
@@ -454,6 +454,16 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                         loss.backward()
                     _optimizer.step()
                     losses.update(loss.item(), batch_size)
+                else:
+                    adv_inputs = adv_samples(model=model,
+                                             x_natural=inputs,
+                                             step_size=step_size,
+                                             epsilon=epsilon,
+                                             perturb_steps=num_step
+                                             )
+
+                adv_outputs = model(adv_inputs)
+
                 top_correct = utils.correct(outputs, targets, top=top)
                 adv_top_correct = utils.correct(adv_outputs, targets, top=top)
                 for i, count in enumerate(top_correct):
@@ -488,6 +498,8 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                     desc += ' Loss {loss.val:.4f} ({loss.avg:.4f})'.format(loss=losses)  # noqa: E501
                 for k, acc in zip(top, accuracies):
                     desc += ' Top-{} {acc.val:.3f} ({acc.avg:.3f})'.format(k, acc=acc)  # noqa: E501
+                for k, rob in zip(top, robustness):
+                    desc += ' Top-{} {rob.val:.3f} ({rob.avg:.3f})'.format(k, rob=rob)  # noqa: E501
                 wrapped_loader.set_description(desc, refresh=False)
                 start = datetime.now()
 

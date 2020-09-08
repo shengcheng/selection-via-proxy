@@ -3,7 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim as optim
+import numpy as np
 
+MEANS = np.array([[0.4914], [0.4822], [0.4465]])
+STDS = np.array([[0.24703223], [0.24348512], [0.26158784]])
+RANGE = np.array([[0,1],
+                  [0,1],
+                  [0,1]])
+RANGE = (RANGE - MEANS) / STDS
 
 def squared_l2_norm(x):
     flattened = x.view(x.unsqueeze(0).shape[0], -1)
@@ -27,7 +34,6 @@ def trades_loss(model,
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
-    outputs.append(model(x_natural).detach())
     # generate adversarial example
     x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
     # x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).detach()
@@ -40,7 +46,10 @@ def trades_loss(model,
             grad = torch.autograd.grad(loss_kl, [x_adv])[0]
             x_adv = x_adv.detach() + step_size * torch.sign(grad.detach())
             x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
-            x_adv = torch.clamp(x_adv, 0.0, 1.0)
+            # x_adv = torch.clamp(x_adv, 0.0, 1.0)
+            x_adv[:, 0, :, :] = torch.clamp(x_adv[:, 0, :, :], RANGE[0, 0], RANGE[0, 1])
+            x_adv[:, 1, :, :] = torch.clamp(x_adv[:, 1, :, :], RANGE[1, 0], RANGE[1, 1])
+            x_adv[:, 2, :, :] = torch.clamp(x_adv[:, 2, :, :], RANGE[2, 0], RANGE[2, 1])
     elif distance == 'l_2':
         delta = 0.001 * torch.randn(x_natural.shape).cuda().detach()
         delta = Variable(delta.data, requires_grad=True)
@@ -94,8 +103,6 @@ def adv_samples(model,
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
-    outputs = []
-    outputs.append(model(x_natural).detach())
     # generate adversarial example
     x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
     # x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).detach()
@@ -107,7 +114,9 @@ def adv_samples(model,
         grad = torch.autograd.grad(loss_kl, [x_adv])[0]
         x_adv = x_adv.detach() + step_size * torch.sign(grad.detach())
         x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
-        x_adv = torch.clamp(x_adv, 0.0, 1.0)
-        outputs.append(model(x_adv).detach())
+        # x_adv = torch.clamp(x_adv, 0.0, 1.0)
+        x_adv[:,0,:,:] = torch.clamp(x_adv[:,0,:,:], RANGE[0,0], RANGE[0,1])
+        x_adv[:, 1, :, :] = torch.clamp(x_adv[:, 1, :, :], RANGE[1, 0], RANGE[1, 1])
+        x_adv[:, 2, :, :] = torch.clamp(x_adv[:, 2, :, :], RANGE[2, 0], RANGE[2, 1])
 
-    return outputs
+    return x_adv.detach()

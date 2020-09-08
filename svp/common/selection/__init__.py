@@ -210,14 +210,16 @@ def adv_select(model: nn.Module, dataset: Dataset, current: np.array,
 
         # Make it easy to map back to indices and specify current subset
         subset_indices = np.concatenate([current, candidates])
-        _, features = _calc_preds_and_features(
+        _, features = _calc_preds_and_features_adv(
             model, dataset, subset_indices, batch_size, num_workers, device,
-            device_ids, use_cuda, keep=keep)
+            device_ids, use_cuda,
+            num_step, step_size, epsilon, beta,
+            keep=keep)
 
         _ranking_start = datetime.now()
         _inference_time = _ranking_start - _inference_start
 
-        new = k_center_greedy_minmax_adv(features, np.arange(len(current)), budget)
+        new = k_center_greedy(features, np.arange(len(current)), budget)
         assert (new >= len(current)).all()
         new = subset_indices[new]
     elif method == 'forgetting_events':
@@ -308,6 +310,8 @@ def _calc_preds_and_features_adv(
     loader = torch.utils.data.DataLoader(  # type: ignore
         subset_dataset, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=use_cuda)
+    if use_cuda:
+        model = nn.DataParallel(model)
 
     model.eval()
     if keep is not None:
@@ -318,17 +322,29 @@ def _calc_preds_and_features_adv(
 
     _features = []
     _preds = []
+    _adv_preds = []
     with torch.no_grad():
         wrapped_loader = tqdm(loader, desc="Inference on unlabeled pool")
         for index, (inputs, targets) in enumerate(wrapped_loader):
             inputs = inputs.to(device)
-            # outputs = model(inputs)
-            outputs = trades_loss(model)
+            outputs = model(inputs)
             dist = torch.nn.functional.softmax(outputs, dim=1)
             _preds.append(dist.detach().cpu())
 
             if keep is not None:
-                _features.append(model.kept[keep].cpu())  # type: ignore
+                # _features.append(model.kept[keep].cpu())  # type: ignore
+                outputs_features = model.kept[keep].clone().cpu()
+            adv_inputs = adv_samples(model=model.model,
+                                     x_natural=inputs,
+                                     step_size=step_size,
+                                     epsilon=epsilon,
+                                     perturb_steps=num_step)
+            adv_outputs = model(adv_inputs)
+            adv_dist = torch.nn.functional.softmax(adv_outputs, dim=1)
+            _adv_preds.append(adv_dist.detach().cpu())
+            if keep is not None:
+                adv_outputs_features = model.kept[keep].clone().cpu()
+                _features.append((outputs_features + beta * adv_outputs_features) / (1 + beta))
 
     preds = torch.cat(_preds).numpy()
     if keep is not None:

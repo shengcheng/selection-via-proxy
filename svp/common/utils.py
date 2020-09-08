@@ -310,6 +310,9 @@ def save_config(config, run_dir):
 def save_index(indices, directory, filename):
     np.savetxt(os.path.join(directory, filename), indices, fmt='%d')
 
+def load_index(directory, filename):
+    return np.loadtxt(os.path.join(directory, filename), dtype=np.int)
+
 
 def get_learning_rate(optimizer):
     for group in optimizer.param_groups:

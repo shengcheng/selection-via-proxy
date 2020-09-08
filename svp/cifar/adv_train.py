@@ -171,6 +171,8 @@ def train(run_dir: str = './run',
         run_dir=run_dir,
         checkpoint=checkpoint)
 
+def create_model(arch: str, num_classes: int):
+    return MODELS[arch](num_classes=num_classes)
 
 def create_model_and_optimizer(arch: str, num_classes: int, optimizer: str,
                                learning_rate: float,

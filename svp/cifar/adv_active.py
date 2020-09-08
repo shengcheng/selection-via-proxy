@@ -4,12 +4,13 @@ from typing import Tuple, Optional
 from functools import partial
 
 import numpy as np
+import torch
 from torch import cuda
 
 from svp.common import utils
 from svp.common.adv_train import create_loaders
 from svp.cifar.datasets import create_dataset
-from svp.cifar.adv_train import create_model_and_optimizer
+from svp.cifar.adv_train import create_model_and_optimizer, create_model
 from svp.common.selection import select, adv_select
 from svp.common.adv_active import (generate_models,
                                check_different_models,
@@ -47,6 +48,9 @@ def adv_active(run_dir: str = './run',
            step_size: float = 0.007,
            epsilon: float = 0.031,
            beta: float = 6.0,
+
+           resume = False,
+           load_dir = '',
 
            cuda: bool = True,
            device_ids: Tuple[int, ...] = tuple(range(cuda.device_count())),
@@ -279,6 +283,10 @@ def adv_active(run_dir: str = './run',
                 target_partial, epochs, learning_rates,
                 train_dataset,  batch_size,
                 device, use_cuda,
+                num_step=num_step,
+                step_size=step_size,
+                epsilon=epsilon,
+                beta=beta,
                 num_workers=num_workers,
                 device_ids=device_ids,
                 dev_loader=target_dev_loader,
@@ -324,14 +332,24 @@ def adv_active(run_dir: str = './run',
                 _, stats = target_generator.send(labeled)
                 utils.save_result(stats, os.path.join(run_dir, "target.csv"))
     else:  # Select which points to label using the proxy.
-        # Create initial random subset to train the proxy (warm start).
-        labeled = np.random.permutation(unlabeled_pool)[:initial_subset]
-        utils.save_index(labeled, run_dir,
-                         'initial_subset_{}.index'.format(len(labeled)))
+        if not resume:
+            # Create initial random subset to train the proxy (warm start).
+            labeled = np.random.permutation(unlabeled_pool)[:initial_subset]
+            utils.save_index(labeled, run_dir,
+                             'initial_subset_{}.index'.format(len(labeled)))
 
-        # Train the proxy on the initial random subset
-        model, stats = proxy_generator.send(labeled)
-        utils.save_result(stats, os.path.join(run_dir, "proxy.csv"))
+            # Train the proxy on the initial random subset
+            model, stats = proxy_generator.send(labeled)
+            utils.save_result(stats, os.path.join(run_dir, "proxy.csv"))
+        else:
+            labeled = utils.load_index(load_dir, 'initial_subset_{}.index'.format(initial_subset))
+            checkpoint_path = glob(os.path.join(
+                load_dir, 'proxy', '*', f'checkpoint_'+'*.t7'))[0]
+            print(f'Loading checkpoint to {checkpoint_path}')
+            state = torch.load(checkpoint_path)
+            model = create_model(proxy_arch, num_classes)
+            model.load_state_dict(state['model'])
+            model.training = False
 
         for selection_size in rounds:
             # Select additional data to label from the unlabeled pool
@@ -344,7 +362,11 @@ def adv_active(run_dir: str = './run',
                                     device=device,
                                     device_ids=device_ids,
                                     num_workers=num_workers,
-                                    use_cuda=use_cuda)
+                                    use_cuda=use_cuda,
+                                    num_step=num_step,
+                                    step_size=step_size,
+                                    epsilon=epsilon,
+                                    beta=beta)
             utils.save_result(stats, os.path.join(run_dir, 'selection.csv'))
 
             # Train the proxy on the newly added data.
