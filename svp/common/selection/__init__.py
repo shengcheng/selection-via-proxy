@@ -327,13 +327,13 @@ def _calc_preds_and_features_adv(
         wrapped_loader = tqdm(loader, desc="Inference on unlabeled pool")
         for index, (inputs, targets) in enumerate(wrapped_loader):
             inputs = inputs.to(device)
-            outputs = model(inputs)
-            dist = torch.nn.functional.softmax(outputs, dim=1)
-            _preds.append(dist.detach().cpu())
-
-            if keep is not None:
-                # _features.append(model.kept[keep].cpu())  # type: ignore
-                outputs_features = model.kept[keep].clone().cpu()
+            # outputs = model(inputs)
+            # dist = torch.nn.functional.softmax(outputs, dim=1)
+            # _preds.append(dist.detach().cpu())
+            #
+            # if keep is not None:
+            #     # _features.append(model.kept[keep].cpu())  # type: ignore
+            #     outputs_features = model.kept[keep].clone().cpu()
             adv_inputs = adv_samples(model=model.model,
                                      x_natural=inputs,
                                      step_size=step_size,
@@ -343,12 +343,13 @@ def _calc_preds_and_features_adv(
             adv_dist = torch.nn.functional.softmax(adv_outputs, dim=1)
             _adv_preds.append(adv_dist.detach().cpu())
             if keep is not None:
-                adv_outputs_features = model.kept[keep].clone().cpu()
-                _features.append((outputs_features + beta * adv_outputs_features) / (1 + beta))
+                _features.append(model.kept[keep].clone().cpu())
+                # _features.append((outputs_features + beta * adv_outputs_features) / (1 + beta))
 
-    preds = torch.cat(_preds).numpy()
+    preds = torch.cat(_adv_preds).numpy()
     if keep is not None:
-        features = torch.cat(_features).numpy()
+        # features = torch.cat(_features).numpy()
+        features = torch.cat(_features)
     else:
         features = None
 

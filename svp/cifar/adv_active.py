@@ -167,6 +167,7 @@ def adv_active(run_dir: str = './run',
     config = utils.capture_config(**locals())
     # Create a unique timestamped directory for this experiment.
     run_dir = utils.create_run_dir(run_dir, timestamp=config['timestamp'])
+    print("save dir: " + run_dir)
     utils.save_config(config, run_dir)
     # Update the computing arguments based on the runtime system.
     use_cuda, device, device_ids, num_workers = utils.config_run_env(
@@ -348,25 +349,37 @@ def adv_active(run_dir: str = './run',
             print(f'Loading checkpoint to {checkpoint_path}')
             state = torch.load(checkpoint_path)
             model = create_model(proxy_arch, num_classes)
+            if use_cuda:
+                model = model.to(device)
             model.load_state_dict(state['model'])
             model.training = False
 
         for selection_size in rounds:
             # Select additional data to label from the unlabeled pool
+            # labeled, stats = select(model, train_dataset,
+            #                         current=labeled,
+            #                         pool=unlabeled_pool,
+            #                         budget=selection_size,
+            #                         method=selection_method,
+            #                         batch_size=proxy_eval_batch_size,
+            #                         device=device,
+            #                         device_ids=device_ids,
+            #                         num_workers=num_workers,
+            #                         use_cuda=use_cuda)
             labeled, stats = adv_select(model, train_dataset,
-                                    current=labeled,
-                                    pool=unlabeled_pool,
-                                    budget=selection_size,
-                                    method=selection_method,
-                                    batch_size=proxy_eval_batch_size,
-                                    device=device,
-                                    device_ids=device_ids,
-                                    num_workers=num_workers,
-                                    use_cuda=use_cuda,
-                                    num_step=num_step,
-                                    step_size=step_size,
-                                    epsilon=epsilon,
-                                    beta=beta)
+                                        current=labeled,
+                                        pool=unlabeled_pool,
+                                        budget=selection_size,
+                                        method=selection_method,
+                                        batch_size=proxy_eval_batch_size,
+                                        device=device,
+                                        device_ids=device_ids,
+                                        num_workers=num_workers,
+                                        use_cuda=use_cuda,
+                                        num_step=num_step,
+                                        step_size=step_size,
+                                        epsilon=epsilon,
+                                        beta=beta)
             utils.save_result(stats, os.path.join(run_dir, 'selection.csv'))
 
             # Train the proxy on the newly added data.

@@ -14,7 +14,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 from svp.common import utils
 from svp.common.datasets import DatasetWithIndex
-from svp.common.trades import trades_loss, adv_samples
+from svp.common.trades import trades_loss, adv_samples, _pgd_whitebox
 
 Loaders = Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]
 
@@ -229,7 +229,7 @@ def run_training(model: nn.Module, optimizer: Optimizer, criterion: nn.Module,
                 batch_callback=batch_callback, fp16=fp16)
             if results_file is not None:
                 # Save high-level summary on training for the epoch.
-                save_summary(epoch, global_step, train_accs, epoch_train_time,
+                save_summary(epoch, global_step, train_accs, train_robustness, epoch_train_time,
                              results_file, 'train')
             train_time += epoch_train_time
             if train_accs[0].avg > best_train_accuracy:
@@ -245,7 +245,7 @@ def run_training(model: nn.Module, optimizer: Optimizer, criterion: nn.Module,
                     output_file=dev_results_file, train=False, fp16=fp16)
                 if results_file is not None:
                     # Save high-level summary on validation for the epoch.
-                    save_summary(epoch, global_step, dev_accs, epoch_dev_time,
+                    save_summary(epoch, global_step, dev_accs, dev_rob, epoch_dev_time,
                                  results_file, 'dev')
                 dev_time += epoch_dev_time
                 if dev_accs[0].avg > best_dev_accuracy:
@@ -262,7 +262,7 @@ def run_training(model: nn.Module, optimizer: Optimizer, criterion: nn.Module,
                     label='(Test): ', fp16=fp16)
                 if results_file is not None:
                     # Save high-level summary on testing for the epoch.
-                    save_summary(epoch, global_step, test_accs,
+                    save_summary(epoch, global_step, test_accs, test_rob,
                                  epoch_test_time, results_file, 'test')
                 test_time += epoch_test_time
                 if test_accs[0].avg > best_test_accuracy:
@@ -336,7 +336,8 @@ def run_training(model: nn.Module, optimizer: Optimizer, criterion: nn.Module,
 
 
 def save_summary(epoch: int, global_step: int,
-                 accuracies: List[utils.AverageMeter], duration: timedelta,
+                 accuracies: List[utils.AverageMeter], robustness: List[utils.AverageMeter],
+                 duration: timedelta,
                  tracking_file: str, mode: str,
                  top=(1,)):
     result: Dict[str, Any] = OrderedDict()
@@ -348,6 +349,8 @@ def save_summary(epoch: int, global_step: int,
 
     for k, acc in zip(top, accuracies):
         result[f'top{k}_accuracy'] = acc.avg
+    for k, rob in zip(top, robustness):
+        result[f'top{k}_robustness'] = rob.avg
     utils.save_result(result, tracking_file)
 
 
@@ -455,12 +458,12 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                     _optimizer.step()
                     losses.update(loss.item(), batch_size)
                 else:
-                    adv_inputs = adv_samples(model=model,
-                                             x_natural=inputs,
-                                             step_size=step_size,
-                                             epsilon=epsilon,
-                                             perturb_steps=num_step
-                                             )
+                    adv_inputs = _pgd_whitebox(model=model,
+                                                X=inputs,
+                                               y=targets,
+                                               epsilon=epsilon,
+                                               num_steps=num_step,
+                                               step_size=step_size)
 
                 adv_outputs = model(adv_inputs)
 

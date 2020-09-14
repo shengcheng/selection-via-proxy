@@ -120,3 +120,27 @@ def adv_samples(model,
         x_adv[:, 2, :, :] = torch.clamp(x_adv[:, 2, :, :], RANGE[2, 0], RANGE[2, 1])
 
     return x_adv.detach()
+
+def _pgd_whitebox(model,
+                  X,
+                  y,
+                  epsilon,
+                  num_steps,
+                  step_size):
+    X_pgd = Variable(X.data, requires_grad=True)
+    random_noise = torch.FloatTensor(*X_pgd.shape).uniform_(-epsilon, epsilon).cuda().detach()
+    X_pgd = Variable(X_pgd.data + random_noise, requires_grad=True)
+
+    for _ in range(num_steps):
+        opt = optim.SGD([X_pgd], lr=1e-3)
+        opt.zero_grad()
+
+        with torch.enable_grad():
+            loss = nn.CrossEntropyLoss()(model(X_pgd), y)
+        loss.backward()
+        eta = step_size * X_pgd.grad.data.sign()
+        X_pgd = Variable(X_pgd.data + eta, requires_grad=True)
+        eta = torch.clamp(X_pgd.data - X.data, -epsilon, epsilon)
+        X_pgd = Variable(X.data + eta, requires_grad=True)
+        X_pgd = Variable(torch.clamp(X_pgd, 0, 1.0), requires_grad=True)
+    return X_pgd
