@@ -29,13 +29,14 @@ def trades_loss(model,
                 epsilon=0.031,
                 perturb_steps=10,
                 beta=1.0,
-                distance='l_inf'):
+                distance='l_inf',
+                device=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).to(device).detach()
     # x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
@@ -98,13 +99,14 @@ def adv_samples(model,
                 x_natural,
                 step_size=0.003,
                 epsilon=0.031,
-                perturb_steps=10):
+                perturb_steps=10,
+                device=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).to(device).detach()
     # x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).detach()
     for _ in range(perturb_steps):
         x_adv.requires_grad_()
@@ -126,9 +128,10 @@ def _pgd_whitebox(model,
                   y,
                   epsilon,
                   num_steps,
-                  step_size):
+                  step_size,
+                  device=None):
     X_pgd = Variable(X.data, requires_grad=True)
-    random_noise = torch.FloatTensor(*X_pgd.shape).uniform_(-epsilon, epsilon).cuda().detach()
+    random_noise = torch.FloatTensor(*X_pgd.shape).uniform_(-epsilon, epsilon).to(device).detach()
     X_pgd = Variable(X_pgd.data + random_noise, requires_grad=True)
 
     for _ in range(num_steps):

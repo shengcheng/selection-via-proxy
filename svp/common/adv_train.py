@@ -447,8 +447,8 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                                                                   step_size=step_size,
                                                                   epsilon=epsilon,
                                                                   perturb_steps=num_step,
-                                                                  beta=beta
-                                                                  )
+                                                                  beta=beta,
+                                                                  device=device)
 
                     if fp16:
                         with amp.scale_loss(loss, _optimizer) as scaled_loss:
@@ -463,7 +463,8 @@ def run_epoch(epoch: int, global_step: int, model: nn.Module,
                                                y=targets,
                                                epsilon=epsilon,
                                                num_steps=num_step,
-                                               step_size=step_size)
+                                               step_size=step_size,
+                                               device=device)
 
                 adv_outputs = model(adv_inputs)
 

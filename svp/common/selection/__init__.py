@@ -338,7 +338,8 @@ def _calc_preds_and_features_adv(
                                      x_natural=inputs,
                                      step_size=step_size,
                                      epsilon=epsilon,
-                                     perturb_steps=num_step)
+                                     perturb_steps=num_step,
+                                     device=device)
             adv_outputs = model(adv_inputs)
             adv_dist = torch.nn.functional.softmax(adv_outputs, dim=1)
             _adv_preds.append(adv_dist.detach().cpu())

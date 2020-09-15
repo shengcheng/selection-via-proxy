@@ -5,6 +5,7 @@ from functools import partial
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch import cuda
 
 from svp.common import utils
@@ -349,8 +350,9 @@ def adv_active(run_dir: str = './run',
             print(f'Loading checkpoint to {checkpoint_path}')
             state = torch.load(checkpoint_path)
             model = create_model(proxy_arch, num_classes)
-            if use_cuda:
-                model = model.to(device)
+            model = model.to(device)
+            # if use_cuda:
+            #     model = nn.DataParallel(model, device_ids)
             model.load_state_dict(state['model'])
             model.training = False
 

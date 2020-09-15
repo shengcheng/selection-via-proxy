@@ -471,6 +471,9 @@ def WRN_16_8(num_classes=10):
 def WRN_28_10(num_classes=10):
     return WRN(28, 10, num_classes=num_classes)
 
+def WRN_34_10(num_classes=10):
+    return WRN(34, 10, num_classes=num_classes)
+
 
 # From "Aggregated Residual Transformations for Deep Neural Networks"
 def ResNeXt29(cardinality, base_width, num_classes=10):
@@ -523,6 +526,7 @@ MODELS = {
         'wrn-16-4': WRN_16_4,
         'wrn-16-8': WRN_16_8,
         'wrn-28-10': WRN_28_10,
+        'wrn-34-10': WRN_34_10,
 
         # Based on "Identity Mappings in Deep Residual Networks"
         'preact8': PreActResNet8,
